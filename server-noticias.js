@@ -235,6 +235,17 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
+  // Serve o favicon
+  if (url.pathname === '/favicon.svg') {
+    const favPath = path.join(__dirname, 'favicon.svg');
+    if (fs.existsSync(favPath)) {
+      res.setHeader('Content-Type', 'image/svg+xml');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.writeHead(200);
+      return res.end(fs.readFileSync(favPath));
+    }
+  }
+
   // Serve o HTML
   if (url.pathname === '/' || url.pathname === '/index.html') {
     const htmlPath = path.join(__dirname, 'noticias.html');

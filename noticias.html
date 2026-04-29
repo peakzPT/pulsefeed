@@ -2,6 +2,9 @@
 <html lang="pt">
 <head>
 <meta charset="UTF-8"/>
+<link rel="icon" type="image/svg+xml" href="favicon.svg"/>
+<link rel="alternate icon" href="favicon.svg"/>
+<meta name="theme-color" content="#07080a"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>PulseFeed</title>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Orbitron:wght@700;900&family=Exo+2:ital,wght@0,300;0,400;1,300&display=swap" rel="stylesheet"/>
@@ -169,6 +172,79 @@ body::after { content:''; position:fixed; inset:0; background:repeating-linear-g
 .ctx-item:hover { background: var(--neon-dim); color: var(--neon); }
 .ctx-item .ctx-icon { font-size: 14px; width: 18px; text-align: center; }
 .ctx-sep { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+
+
+/* ── TWITCH ── */
+.cal-title.twitch { color: #9147ff; }
+.cal-title.twitch::after { content:''; flex:1; height:1px; background:linear-gradient(90deg,#9147ff,transparent); opacity:0.3; }
+.twitch-input-wrap {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.twitch-input-wrap input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  padding: 7px 10px;
+  color: var(--text);
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.twitch-input-wrap input:focus { border-color: #9147ff; }
+.twitch-input-wrap input::placeholder { color: var(--muted); }
+.twitch-input-wrap button {
+  background: #9147ff;
+  border: none;
+  border-radius: 4px;
+  width: 32px;
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.twitch-input-wrap button:hover { background: #7c3aed; }
+#twitchPlayer {
+  width: 100%;
+  aspect-ratio: 16/9;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #000;
+}
+#twitchPlayer iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  border-radius: 6px;
+}
+.twitch-channel-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 2px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: #9147ff;
+}
+.twitch-close {
+  background: transparent;
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  padding: 2px 7px;
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.twitch-close:hover { color: var(--text); border-color: var(--border2); }
 </style>
 </head>
 <body>
@@ -206,6 +282,26 @@ body::after { content:''; position:fixed; inset:0; background:repeating-linear-g
     <div class="cal-block">
       <div class="cal-title f1"><span class="ct-icon">🏎️</span> F1 Calendar 2026</div>
       <div id="calF1"></div>
+    </div>
+
+    <hr class="cal-sep"/>
+
+    <!-- TWITCH -->
+    <div class="cal-block">
+      <div class="cal-title twitch"><span class="ct-icon">🟣</span> Twitch</div>
+      <div id="twitchBlock">
+        <div class="twitch-input-wrap">
+          <input id="twitchChannel" type="text" placeholder="nome do canal..." autocomplete="off" spellcheck="false"/>
+          <button onclick="loadTwitch()">▸</button>
+        </div>
+        <div id="twitchEmbed" style="display:none">
+          <div id="twitchPlayer"></div>
+          <div class="twitch-channel-bar">
+            <span id="twitchChannelName"></span>
+            <button class="twitch-close" onclick="closeTwitch()">✕</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <hr class="cal-sep"/>
@@ -618,6 +714,42 @@ document.getElementById('ctxNewWindow').addEventListener('click', () => {
 document.getElementById('ctxCopy').addEventListener('click', () => {
   if (ctxUrl) navigator.clipboard.writeText(ctxUrl).catch(() => {});
   closeCtxMenu();
+});
+
+
+// ── TWITCH ────────────────────────────────────────────────
+function loadTwitch() {
+  const channel = document.getElementById('twitchChannel').value.trim();
+  if (!channel) return;
+
+  const parent = window.location.hostname || 'localhost';
+  const playerDiv = document.getElementById('twitchPlayer');
+  const embedDiv  = document.getElementById('twitchEmbed');
+  const nameEl    = document.getElementById('twitchChannelName');
+
+  // inject iframe
+  playerDiv.innerHTML = `<iframe
+    src="https://player.twitch.tv/?channel=${encodeURIComponent(channel)}&parent=${parent}&muted=false&autoplay=true"
+    allowfullscreen="true"
+    scrolling="no"
+    width="100%"
+    height="100%">
+  </iframe>`;
+
+  nameEl.textContent = '🟣 ' + channel;
+  embedDiv.style.display = 'block';
+}
+
+function closeTwitch() {
+  document.getElementById('twitchPlayer').innerHTML = '';
+  document.getElementById('twitchEmbed').style.display = 'none';
+  document.getElementById('twitchChannel').value = '';
+}
+
+// allow Enter key to load
+document.addEventListener('DOMContentLoaded', () => {
+  const inp = document.getElementById('twitchChannel');
+  if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') loadTwitch(); });
 });
 
 </script>

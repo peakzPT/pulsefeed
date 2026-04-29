@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Background -->
+  <rect width="32" height="32" rx="7" fill="#07080a"/>
+  <!-- Neon border -->
+  <rect width="32" height="32" rx="7" fill="none" stroke="#00f5a0" stroke-width="1" opacity="0.4"/>
+  <!-- ECG pulse line -->
+  <polyline
+    points="2,16 7,16 9,8 11,24 13,16 16,16 18,11 20,21 22,16 30,16"
+    fill="none"
+    stroke="#00f5a0"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <!-- Neon dot at peak -->
+  <circle cx="18" cy="11" r="2" fill="#00f5a0" opacity="0.9"/>
+</svg>
