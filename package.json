@@ -1,0 +1,12 @@
+{
+  "name": "pulsefeed",
+  "version": "1.0.0",
+  "description": "PulseFeed - Agregador de Noticias",
+  "main": "server-noticias.js",
+  "scripts": {
+    "start": "node server-noticias.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
