@@ -235,6 +235,17 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
+  // Serve o ads.txt
+  if (url.pathname === '/ads.txt') {
+    const adsPath = path.join(__dirname, 'ads.txt');
+    if (fs.existsSync(adsPath)) {
+      res.setHeader('Content-Type', 'text/plain');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.writeHead(200);
+      return res.end(fs.readFileSync(adsPath));
+    }
+  }
+
   // Serve o favicon
   if (url.pathname === '/favicon.svg') {
     const favPath = path.join(__dirname, 'favicon.svg');

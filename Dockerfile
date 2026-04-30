@@ -4,5 +4,6 @@ COPY package.json .
 COPY server-noticias.js .
 COPY noticias.html .
 COPY favicon.svg .
+COPY ads.txt .
 EXPOSE 4000
 CMD ["node", "server-noticias.js"]
