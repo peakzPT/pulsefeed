@@ -2,8 +2,109 @@
 <html lang="pt">
 <head>
 <meta charset="UTF-8"/>
-<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1851064819375390" crossorigin="anonymous"></script>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1851064819375390" crossorigin="anonymous">
+// ── PWA SERVICE WORKER ─────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(() => console.log('[PWA] Service Worker registado'))
+      .catch(e => console.warn('[PWA] SW erro:', e));
+  });
+}
+
+
+// ── CS2 MATCH TICKER ──────────────────────────────────────
+async function loadCS2Ticker() {
+  const el = document.getElementById('cs2Ticker');
+  if (!el) return;
+  try {
+    const res  = await fetch('/api/cs2matches');
+    const data = await res.json();
+    renderTicker(data);
+  } catch(e) {
+    el.innerHTML = '<div class="ticker-empty">Não foi possível carregar</div>';
+  }
+}
+
+function renderTicker({ live = [], upcoming = [] }) {
+  const el = document.getElementById('cs2Ticker');
+  el.innerHTML = '';
+
+  // LIVE
+  if (live.length) {
+    const lbl = document.createElement('div');
+    lbl.className = 'ticker-section-label live-label';
+    lbl.innerHTML = '<span class="live-dot"></span> LIVE';
+    el.appendChild(lbl);
+    live.forEach(m => el.appendChild(makeMatchCard(m, true)));
+  }
+
+  // UPCOMING
+  if (upcoming.length) {
+    const lbl = document.createElement('div');
+    lbl.className = 'ticker-section-label';
+    lbl.textContent = 'A SEGUIR';
+    el.appendChild(lbl);
+    upcoming.forEach(m => el.appendChild(makeMatchCard(m, false)));
+  }
+
+  if (!live.length && !upcoming.length) {
+    el.innerHTML = '<div class="ticker-empty">Sem jogos de momento</div>';
+  }
+}
+
+function makeMatchCard(m, isLive) {
+  const card = document.createElement('div');
+  card.className = 'match-card' + (isLive ? ' is-live' : '');
+  card.onclick = () => window.open('https://www.hltv.org/matches', '_blank');
+
+  const logoFallback = 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 1 1%22/>';
+
+  const timeStr = m.time
+    ? new Date(m.time).toLocaleTimeString('pt-PT', { hour:'2-digit', minute:'2-digit', timeZone:'Europe/Lisbon' })
+    : '';
+
+  const dateStr = m.time
+    ? new Date(m.time).toLocaleDateString('pt-PT', { day:'numeric', month:'short', timeZone:'Europe/Lisbon' })
+    : '';
+
+  card.innerHTML = `
+    <div class="match-teams">
+      <div class="match-team">
+        ${m.logo1 ? `<img class="team-logo" src="${m.logo1}" onerror="this.style.display='none'"/>` : ''}
+        <span class="team-name">${esc(m.team1)}</span>
+      </div>
+      ${isLive
+        ? `<span class="match-score">${m.score1 ?? 0}–${m.score2 ?? 0}</span>`
+        : `<span class="match-vs">VS</span>`
+      }
+      <div class="match-team right">
+        <span class="team-name">${esc(m.team2)}</span>
+        ${m.logo2 ? `<img class="team-logo" src="${m.logo2}" onerror="this.style.display='none'"/>` : ''}
+      </div>
+    </div>
+    <div class="match-meta">
+      <span class="format">${esc(m.format)}</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px">${esc(m.event)}</span>
+      <span class="match-time">${isLive ? '🔴 LIVE' : dateStr + ' ' + timeStr}</span>
+    </div>`;
+  return card;
+}
+
+// load on init and refresh every 2 min
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(loadCS2Ticker, 500);
+  setInterval(loadCS2Ticker, 2 * 60 * 1000);
+});
+
+</script>
 <link rel="icon" type="image/svg+xml" href="favicon.svg"/>
+<link rel="manifest" href="/manifest.json"/>
+<link rel="apple-touch-icon" href="/icon-192.png"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="PulseFeed"/>
 <link rel="alternate icon" href="favicon.svg"/>
 <meta name="theme-color" content="#07080a"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -175,6 +276,115 @@ body::after { content:''; position:fixed; inset:0; background:repeating-linear-g
 .ctx-sep { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
 
 
+
+/* ── CS2 MATCH TICKER ── */
+.cal-title.cs-ticker { color: var(--cs-orange); }
+.cal-title.cs-ticker::after { content:''; flex:1; height:1px; background:linear-gradient(90deg,var(--cs-orange),transparent); opacity:0.3; }
+.ticker-loading { display:flex; align-items:center; justify-content:center; padding:16px; }
+
+.ticker-section-label {
+  font-family:'Rajdhani',sans-serif;
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:2px;
+  text-transform:uppercase;
+  color:var(--muted);
+  padding:6px 0 4px;
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.ticker-section-label.live-label { color:var(--neon); }
+.ticker-section-label .live-dot {
+  width:6px; height:6px;
+  border-radius:50%;
+  background:var(--neon);
+  box-shadow:0 0 6px var(--neon);
+  animation:blink 1.2s ease-in-out infinite;
+}
+
+.match-card {
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:5px;
+  padding:9px 10px;
+  margin-bottom:5px;
+  cursor:pointer;
+  transition:border-color 0.15s;
+}
+.match-card:hover { border-color:var(--border2); }
+.match-card.is-live { border-color:rgba(0,245,160,0.2); background:rgba(0,245,160,0.03); }
+
+.match-teams {
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin-bottom:5px;
+}
+.match-team {
+  display:flex;
+  align-items:center;
+  gap:5px;
+  flex:1;
+}
+.match-team.right { flex-direction:row-reverse; text-align:right; }
+.team-logo {
+  width:18px; height:18px;
+  object-fit:contain;
+  border-radius:2px;
+  background:var(--surface);
+  flex-shrink:0;
+}
+.team-name {
+  font-family:'Rajdhani',sans-serif;
+  font-size:12px;
+  font-weight:700;
+  color:var(--text);
+  letter-spacing:0.3px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.match-vs {
+  font-family:'Orbitron',monospace;
+  font-size:10px;
+  color:var(--muted);
+  flex-shrink:0;
+}
+.match-score {
+  font-family:'Orbitron',monospace;
+  font-size:13px;
+  font-weight:700;
+  color:var(--neon);
+  flex-shrink:0;
+  letter-spacing:1px;
+}
+.match-meta {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  font-family:'Rajdhani',sans-serif;
+  font-size:10px;
+  color:var(--muted);
+  letter-spacing:0.5px;
+}
+.match-meta .format {
+  background:var(--surface);
+  border:1px solid var(--border2);
+  border-radius:2px;
+  padding:1px 5px;
+  color:var(--text2);
+  font-weight:600;
+}
+.match-time { color:var(--cs-orange); font-weight:600; }
+.ticker-empty {
+  font-family:'Rajdhani',sans-serif;
+  font-size:12px;
+  color:var(--muted);
+  text-align:center;
+  padding:12px 0;
+  letter-spacing:0.5px;
+}
 </style>
 </head>
 <body>
@@ -212,6 +422,14 @@ body::after { content:''; position:fixed; inset:0; background:repeating-linear-g
     <div class="cal-block">
       <div class="cal-title f1"><span class="ct-icon">🏎️</span> F1 Calendar 2026</div>
       <div id="calF1"></div>
+    </div>
+
+    <hr class="cal-sep"/>
+
+    <!-- CS2 MATCH TICKER -->
+    <div class="cal-block">
+      <div class="cal-title cs-ticker"><span class="ct-icon">🎮</span> CS2 Matches</div>
+      <div id="cs2Ticker"><div class="ticker-loading"><div class="spinner" style="width:18px;height:18px;margin:0"></div></div></div>
     </div>
 
     <hr class="cal-sep"/>
@@ -660,6 +878,101 @@ function closeTwitch() {
 document.addEventListener('DOMContentLoaded', () => {
   const inp = document.getElementById('twitchChannel');
   if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') loadTwitch(); });
+});
+
+
+// ── PWA SERVICE WORKER ─────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(() => console.log('[PWA] Service Worker registado'))
+      .catch(e => console.warn('[PWA] SW erro:', e));
+  });
+}
+
+
+// ── CS2 MATCH TICKER ──────────────────────────────────────
+async function loadCS2Ticker() {
+  const el = document.getElementById('cs2Ticker');
+  if (!el) return;
+  try {
+    const res  = await fetch('/api/cs2matches');
+    const data = await res.json();
+    renderTicker(data);
+  } catch(e) {
+    el.innerHTML = '<div class="ticker-empty">Não foi possível carregar</div>';
+  }
+}
+
+function renderTicker({ live = [], upcoming = [] }) {
+  const el = document.getElementById('cs2Ticker');
+  el.innerHTML = '';
+
+  // LIVE
+  if (live.length) {
+    const lbl = document.createElement('div');
+    lbl.className = 'ticker-section-label live-label';
+    lbl.innerHTML = '<span class="live-dot"></span> LIVE';
+    el.appendChild(lbl);
+    live.forEach(m => el.appendChild(makeMatchCard(m, true)));
+  }
+
+  // UPCOMING
+  if (upcoming.length) {
+    const lbl = document.createElement('div');
+    lbl.className = 'ticker-section-label';
+    lbl.textContent = 'A SEGUIR';
+    el.appendChild(lbl);
+    upcoming.forEach(m => el.appendChild(makeMatchCard(m, false)));
+  }
+
+  if (!live.length && !upcoming.length) {
+    el.innerHTML = '<div class="ticker-empty">Sem jogos de momento</div>';
+  }
+}
+
+function makeMatchCard(m, isLive) {
+  const card = document.createElement('div');
+  card.className = 'match-card' + (isLive ? ' is-live' : '');
+  card.onclick = () => window.open('https://www.hltv.org/matches', '_blank');
+
+  const logoFallback = 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 1 1%22/>';
+
+  const timeStr = m.time
+    ? new Date(m.time).toLocaleTimeString('pt-PT', { hour:'2-digit', minute:'2-digit', timeZone:'Europe/Lisbon' })
+    : '';
+
+  const dateStr = m.time
+    ? new Date(m.time).toLocaleDateString('pt-PT', { day:'numeric', month:'short', timeZone:'Europe/Lisbon' })
+    : '';
+
+  card.innerHTML = `
+    <div class="match-teams">
+      <div class="match-team">
+        ${m.logo1 ? `<img class="team-logo" src="${m.logo1}" onerror="this.style.display='none'"/>` : ''}
+        <span class="team-name">${esc(m.team1)}</span>
+      </div>
+      ${isLive
+        ? `<span class="match-score">${m.score1 ?? 0}–${m.score2 ?? 0}</span>`
+        : `<span class="match-vs">VS</span>`
+      }
+      <div class="match-team right">
+        <span class="team-name">${esc(m.team2)}</span>
+        ${m.logo2 ? `<img class="team-logo" src="${m.logo2}" onerror="this.style.display='none'"/>` : ''}
+      </div>
+    </div>
+    <div class="match-meta">
+      <span class="format">${esc(m.format)}</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px">${esc(m.event)}</span>
+      <span class="match-time">${isLive ? '🔴 LIVE' : dateStr + ' ' + timeStr}</span>
+    </div>`;
+  return card;
+}
+
+// load on init and refresh every 2 min
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(loadCS2Ticker, 500);
+  setInterval(loadCS2Ticker, 2 * 60 * 1000);
 });
 
 </script>

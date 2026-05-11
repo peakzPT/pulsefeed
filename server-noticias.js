@@ -137,6 +137,9 @@ function parseRSS(xml, feed) {
   return items;
 }
 
+// ─── MATCH CACHE ──────────────────────────────────────────
+let matchCache = {};
+
 // ─── CACHE ────────────────────────────────────────────────
 const cache = {};
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutos
@@ -235,6 +238,24 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
+  // PWA files
+  const pwaFiles = {
+    '/manifest.json': ['application/json', 'manifest.json'],
+    '/sw.js':         ['application/javascript', 'sw.js'],
+    '/icon-192.png':  ['image/png', 'icon-192.png'],
+    '/icon-512.png':  ['image/png', 'icon-512.png'],
+  };
+  if (pwaFiles[url.pathname]) {
+    const [mime, fname] = pwaFiles[url.pathname];
+    const fpath = path.join(__dirname, fname);
+    if (fs.existsSync(fpath)) {
+      res.setHeader('Content-Type', mime);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.writeHead(200);
+      return res.end(fs.readFileSync(fpath));
+    }
+  }
+
   // Serve o ads.txt
   if (url.pathname === '/ads.txt') {
     const adsPath = path.join(__dirname, 'ads.txt');
@@ -318,6 +339,58 @@ const server = http.createServer(async (req, res) => {
       console.log('[F1 Calendar] Erro: ' + e.message);
       res.writeHead(500);
       return res.end(JSON.stringify({ error: e.message }));
+    }
+  }
+
+  // ── CS2 Match Ticker (via PandaScore free API) ───────────
+  if (url.pathname === '/api/cs2matches') {
+    res.setHeader('Content-Type', 'application/json');
+    try {
+      const cache_key = 'cs2matches';
+      const now = Date.now();
+
+      // cache 2 min
+      if (matchCache.data && now - matchCache.ts < 2 * 60 * 1000) {
+        res.writeHead(200);
+        return res.end(JSON.stringify(matchCache.data));
+      }
+
+      // fetch live + upcoming from PandaScore (no auth needed for basic data)
+      const [liveRaw, upcomingRaw] = await Promise.all([
+        fetchUrl('https://api.pandascore.co/csgo/matches/running?per_page=10&sort=-begin_at&filter[videogame_version]=cs2'),
+        fetchUrl('https://api.pandascore.co/csgo/matches/upcoming?per_page=10&sort=begin_at&filter[videogame_version]=cs2'),
+      ]);
+
+      const live     = JSON.parse(liveRaw)     || [];
+      const upcoming = JSON.parse(upcomingRaw) || [];
+
+      const mapMatch = (m, isLive) => ({
+        id:       m.id,
+        isLive,
+        team1:    m.opponents?.[0]?.opponent?.name || 'TBD',
+        team2:    m.opponents?.[1]?.opponent?.name || 'TBD',
+        logo1:    m.opponents?.[0]?.opponent?.image_url || null,
+        logo2:    m.opponents?.[1]?.opponent?.image_url || null,
+        score1:   isLive ? (m.results?.[0]?.score ?? null) : null,
+        score2:   isLive ? (m.results?.[1]?.score ?? null) : null,
+        format:   m.number_of_games ? `BO${m.number_of_games}` : '',
+        event:    m.tournament?.name || m.league?.name || '',
+        time:     m.begin_at,
+        url:      `https://www.hltv.org/matches`,
+      });
+
+      const data = {
+        live:     live.slice(0,5).map(m => mapMatch(m, true)),
+        upcoming: upcoming.slice(0,8).map(m => mapMatch(m, false)),
+      };
+
+      matchCache = { data, ts: now };
+      res.writeHead(200);
+      return res.end(JSON.stringify(data));
+    } catch(e) {
+      console.log('[CS2 Matches] Erro:', e.message);
+      res.writeHead(200);
+      return res.end(JSON.stringify({ live: [], upcoming: [], error: e.message }));
     }
   }
 
