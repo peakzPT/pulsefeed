@@ -38,7 +38,7 @@ function fetchUrl(url) {
     const lib = url.startsWith('https') ? https : http;
     const req = lib.get(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; NewsAggregator/1.0)',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         'Accept': 'application/rss+xml, application/xml, text/xml, */*',
       },
       timeout: 10000,
@@ -233,6 +233,33 @@ function parseICS(ics) {
   return weekends;
 }
 
+
+// ─── CS2 MATCH PARSER (bo3.gg) ───────────────────────────
+function parseBO3Matches(json) {
+  const live = [], upcoming = [];
+  const matches = Array.isArray(json) ? json : (json.data || json.matches || []);
+
+  for (const m of matches) {
+    const team1 = m.team1?.name || m.teams?.[0]?.name || 'TBD';
+    const team2 = m.team2?.name || m.teams?.[1]?.name || 'TBD';
+    const logo1 = m.team1?.logo || m.teams?.[0]?.logo || null;
+    const logo2 = m.team2?.logo || m.teams?.[1]?.logo || null;
+    const isLive = m.status === 'live' || m.live === true || m.state === 'live';
+    const score1 = m.score1 ?? m.team1Score ?? m.scores?.[0] ?? null;
+    const score2 = m.score2 ?? m.team2Score ?? m.scores?.[1] ?? null;
+    const format = m.format || m.bestOf ? `BO${m.bestOf || m.format}` : '';
+    const event  = m.event?.name || m.tournament?.name || m.league || '';
+    const time   = m.startTime || m.scheduledAt || m.begin_at || null;
+
+    const obj = { id: m.id || Math.random(), isLive, team1, team2, logo1, logo2,
+                  score1: isLive ? score1 : null, score2: isLive ? score2 : null,
+                  format, event, time };
+    if (isLive) live.push(obj);
+    else upcoming.push(obj);
+  }
+  return { live: live.slice(0,6), upcoming: upcoming.slice(0,10) };
+}
+
 // ─── SERVIDOR ─────────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -342,53 +369,66 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // ── CS2 Match Ticker (via PandaScore free API) ───────────
+  // ── CS2 Match Ticker (scrape HLTV) ──────────────────────
   if (url.pathname === '/api/cs2matches') {
     res.setHeader('Content-Type', 'application/json');
+    const now = Date.now();
+
+    // cache 90 seconds
+    if (matchCache.data && now - matchCache.ts < 90 * 1000) {
+      res.writeHead(200);
+      return res.end(JSON.stringify(matchCache.data));
+    }
+
     try {
-      const cache_key = 'cs2matches';
-      const now = Date.now();
+      // Try multiple sources in order
+      let data = { live: [], upcoming: [] };
 
-      // cache 2 min
-      if (matchCache.data && now - matchCache.ts < 2 * 60 * 1000) {
-        res.writeHead(200);
-        return res.end(JSON.stringify(matchCache.data));
+      // Source 1: bo3.gg public API
+      try {
+        const [liveRaw, upcomingRaw] = await Promise.all([
+          fetchUrl('https://bo3.gg/api/matches?status=live&game=cs2&per_page=10'),
+          fetchUrl('https://bo3.gg/api/matches?status=upcoming&game=cs2&per_page=10'),
+        ]);
+        const live     = parseBO3Matches(JSON.parse(liveRaw));
+        const upcoming = parseBO3Matches(JSON.parse(upcomingRaw));
+        data = { live: live.live, upcoming: upcoming.upcoming };
+        console.log(`[CS2 bo3.gg] live:${data.live.length} upcoming:${data.upcoming.length}`);
+      } catch(e1) {
+        console.log('[CS2 bo3.gg] falhou:', e1.message);
+
+        // Source 2: liquipedia CS2 matches via API
+        try {
+          const raw = await fetchUrl('https://liquipedia.net/counterstrike/api.php?action=parse&page=Liquipedia:Upcoming_and_ongoing_matches&prop=wikitext&format=json');
+          const json = JSON.parse(raw);
+          const wikitext = json?.parse?.wikitext?.['*'] || '';
+          // parse basic team names from wikitext
+          const matches = [];
+          const matchRe = /\|team1=([^\|]+)\|team2=([^\|]+)\|([^\}]*)/g;
+          let mm;
+          while ((mm = matchRe.exec(wikitext)) !== null && matches.length < 8) {
+            matches.push({
+              id: matches.length,
+              isLive: false,
+              team1: mm[1].trim() || 'TBD',
+              team2: mm[2].trim() || 'TBD',
+              logo1: null, logo2: null,
+              score1: null, score2: null,
+              format: '', event: 'CS2', time: null,
+            });
+          }
+          data = { live: [], upcoming: matches };
+          console.log(`[CS2 Liquipedia] upcoming:${matches.length}`);
+        } catch(e2) {
+          console.log('[CS2 Liquipedia] falhou:', e2.message);
+        }
       }
-
-      // fetch live + upcoming from PandaScore (no auth needed for basic data)
-      const [liveRaw, upcomingRaw] = await Promise.all([
-        fetchUrl('https://api.pandascore.co/csgo/matches/running?per_page=10&sort=-begin_at&filter[videogame_version]=cs2'),
-        fetchUrl('https://api.pandascore.co/csgo/matches/upcoming?per_page=10&sort=begin_at&filter[videogame_version]=cs2'),
-      ]);
-
-      const live     = JSON.parse(liveRaw)     || [];
-      const upcoming = JSON.parse(upcomingRaw) || [];
-
-      const mapMatch = (m, isLive) => ({
-        id:       m.id,
-        isLive,
-        team1:    m.opponents?.[0]?.opponent?.name || 'TBD',
-        team2:    m.opponents?.[1]?.opponent?.name || 'TBD',
-        logo1:    m.opponents?.[0]?.opponent?.image_url || null,
-        logo2:    m.opponents?.[1]?.opponent?.image_url || null,
-        score1:   isLive ? (m.results?.[0]?.score ?? null) : null,
-        score2:   isLive ? (m.results?.[1]?.score ?? null) : null,
-        format:   m.number_of_games ? `BO${m.number_of_games}` : '',
-        event:    m.tournament?.name || m.league?.name || '',
-        time:     m.begin_at,
-        url:      `https://www.hltv.org/matches`,
-      });
-
-      const data = {
-        live:     live.slice(0,5).map(m => mapMatch(m, true)),
-        upcoming: upcoming.slice(0,8).map(m => mapMatch(m, false)),
-      };
 
       matchCache = { data, ts: now };
       res.writeHead(200);
       return res.end(JSON.stringify(data));
     } catch(e) {
-      console.log('[CS2 Matches] Erro:', e.message);
+      console.log('[CS2 Matches] Erro geral:', e.message);
       res.writeHead(200);
       return res.end(JSON.stringify({ live: [], upcoming: [], error: e.message }));
     }
